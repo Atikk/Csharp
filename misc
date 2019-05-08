@@ -1,0 +1,125 @@
+static void Main(){
+	Misc.x();
+}
+class Misc
+    {
+        static List<WeakReference> _list = new List<WeakReference>();
+        static ManualResetEvent tokenReady = new ManualResetEvent(false);
+        static Barrier _barrier = new Barrier(3, barrier => Console.WriteLine());
+
+        public readonly string Name;
+        public static void x()
+        {
+            using (var mutex = new Mutex(true, "Atikk.com 1 at a time"))
+            {
+                if (!mutex.WaitOne(TimeSpan.FromSeconds(3), false))
+                {
+                    Console.WriteLine("Another Instance of this app is running.");
+                    return;
+                }
+                try
+                {
+
+                    GC.Collect();
+
+                    var token = new AutoResetEvent(false);
+                    tcs.ToTask(token);
+
+                    new Thread(List).Start();
+                    new Thread(List).Start();
+                    new Thread(List).Start();
+
+                    RunProgram();
+
+                }
+                finally
+                {
+                    var token = new EventWaitHandle(false, EventResetMode.AutoReset);
+                    tcs.ToTask(token);
+                    GC.Collect();
+                    mutex.ReleaseMutex();
+                }
+
+            }
+        }
+        static void RunProgram()
+        {
+
+            Trace.Listeners.Add(new EventLogTraceListener("DemoApp"));
+
+            RegisteredWaitHandle token = ThreadPool.RegisterWaitForSingleObject(tokenReady, Go, "Data", -1, true);
+
+            Console.WriteLine("Signaling worker...");
+            tokenReady.Set();
+            
+
+            Console.WriteLine("Running... \n");
+
+            string procName = Process.GetCurrentProcess().ProcessName;
+            Console.WriteLine("Performance Count: \nProcess Private Bytes");
+            using (PerformanceCounter pc = new PerformanceCounter("Process", "Private Bytes", procName))
+                Console.WriteLine(pc.NextValue() + "\n");
+            Console.WriteLine("Garbage Collection:" + "\n");
+
+            GC.Collect(0);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(1);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2);
+            GC.WaitForPendingFinalizers();
+
+            Console.WriteLine("GC setting = LowLatency \n");
+            GCSettings.LatencyMode = GCLatencyMode.LowLatency;
+            Console.WriteLine("GC Total Memory:");
+            long memoryUsed = GC.GetTotalMemory(true);
+            Console.WriteLine(memoryUsed);
+            Console.WriteLine("\nGC settings = Quick Compaction \n");
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.WaitForFullGCComplete();
+            Console.WriteLine("Done! \n");
+
+            _barrier.SignalAndWait();
+            token.Unregister(tokenReady);
+
+
+            Console.ReadLine();
+        }
+        public Misc(string name)
+        {
+            lock (_list) Name = name;
+            lock (_list) _list.Add(new WeakReference(this));
+        }
+        public static void List()
+        {
+
+            foreach (WeakReference weak in _list)
+            {
+                Misc c = (Misc)weak.Target;
+                if (c != null)
+                {
+                    Console.WriteLine(c.Name);
+                }    
+            }
+            _barrier.SignalAndWait();
+        }
+        public static void Go(object data, bool timedOut)
+        {
+            Console.WriteLine("\n" + data);
+            _barrier.SignalAndWait();
+        }
+        
+    }
+    static class tcs
+
+    {
+        public static Task<bool> ToTask(this WaitHandle waitHandle, int timeout = -1)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            var tokenReady = new ManualResetEventSlim();
+            RegisteredWaitHandle token = null;
+            
+            token = ThreadPool.RegisterWaitForSingleObject(
+                waitHandle, (state, timedOut) => { tokenReady.Wait(); tokenReady.Dispose(); token.Unregister(waitHandle); tcs.SetResult(!timedOut); },
+                null, timeout, true); tokenReady.Set(); return tcs.Task; 
+        }
+    }
