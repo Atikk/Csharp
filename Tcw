@@ -1,0 +1,65 @@
+static void Main(){
+	TenaciousCleanupWorker.StartWorker();
+}
+static class TenaciousCleanupWorker
+{
+	private static readonly object _locker = new object();
+
+	private static List<Func<bool>> _jobs = new List<Func<bool>>();
+
+	public static void Do(Action action, Func<Exception, bool> retryCondition, int timeout = 30000)
+	{
+		lock (_locker)
+		{
+			Stopwatch sw = Stopwatch.StartNew();
+			_jobs.Add(delegate
+			{
+				try
+				{
+					action();
+					return false;
+				}
+				catch (Exception arg)
+				{
+					if (sw.ElapsedMilliseconds > timeout)
+					{
+						return false;
+					}
+					return retryCondition(arg);
+				}
+			});
+			if (_jobs.Count == 1)
+			{
+				StartWorker();
+			}
+		}
+	}
+
+	public static void StartWorker()
+	{
+		lock (_locker)
+		{
+			Thread thread = new Thread((ThreadStart)delegate
+			{
+				while (true)
+				{
+					lock (_locker)
+					{
+						_jobs = (from j in _jobs
+						where j()
+						select j).ToList();
+						if (_jobs.Count != 0)
+						{
+							goto end_IL_000c;
+						}
+						return;
+						end_IL_000c:;
+					}
+					
+				}
+			});
+			thread.Name = "Cleanup worker";
+			thread.Start();
+		}
+	}
+}
