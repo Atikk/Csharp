@@ -1,0 +1,113 @@
+ class Program
+{
+    static unsafe void Main(string[] args)
+    { 
+	  using(SharedMem sm = new SharedMem("MyShare", false,1000))
+	  {
+	  EventWaitHandle wh = new EventWaitHandle(true,EventResetMode.AutoReset,"root");
+	  for(int i=0;i<1000;i++){
+	   void* root = sm.Root.ToPointer();
+	   
+	   MySharedData* data = (MySharedData*) root;
+	   
+	   data-> id = i;
+	   data-> bit = ' ';
+	   data-> key[i] = 0f;
+	   Console.WriteLine(data->id + " " + data->bit + " " + data->key[i]);
+	   wh.WaitOne();
+	   
+	   }
+	   }
+	   
+    }
+	class wait{
+	}
+  [StructLayout (LayoutKind.Sequential)]
+  unsafe public struct MySharedData{
+    public int id;
+    public char bit;
+    public fixed float key[50];
+  }
+  public class QuickFind
+  {
+    private int[] id;
+    public void quickFind(int N) { id = new int[N]; for (int i = 0; i < N; i++) { id[i] = i; } }
+    public bool find(int p, int q) { return id[p] == id[q]; }
+    public void unite(int p, int q) { int pid = id[p]; for (int i = 0; i < id.Length; i++) { id[i] = id[q]; } }
+  }
+
+  public class QuickUnion
+  {
+    private int[] id;
+    public void quickUnion(int N) { id = new int[N]; for (int i = 0; i < N; i++) { id[i] = i; } }
+    private int root(int i) { while (i != id[i]) id[i] = i; return i; }
+    public bool find(int p, int q) { return root(p) == root(q); }
+    public void unite(int p, int q) { int i = root(p); int j = root(q); id[i] = j; }
+  }
+  public class SharedMem : IDisposable
+  {
+
+    enum FileProtection : uint
+    {
+        ReadOnly = 2, ReadWrite = 4
+    }
+    enum FileRights : uint
+    {
+        Read = 4,
+        Write = 2,
+        ReadWrite = Read + Write
+    }
+
+
+    static readonly IntPtr NoFileHandle = new IntPtr(-1);
+
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr CreateFileMapping(IntPtr hfile,
+                                            int lpAttributes,
+                                            FileProtection flProtect,
+                                            uint dwMaximumSizeHigh,
+                                            uint dwMaximumSizeLow,
+                                            string lpName);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr OpenFileMapping(FileRights dwDesiredAccess,
+                                          bool bInheritHandle,
+                                          string lpName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    
+    static extern IntPtr MapViewOfFile(IntPtr hFileMappingObject,
+                                        FileRights dwDesiredAccess,
+                                        uint dwFileOffsetHigh,
+                                        uint dwFileOffsetLow,
+                                        uint dwNumberOfBytesToMap);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool UnmapViewOfFile(IntPtr map);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern int CloseHandle(IntPtr hObject);
+
+    IntPtr fileHandle, fileMap;
+    public IntPtr Root { get { return fileMap; } }
+    public SharedMem(string name, bool existing, uint sizeInBytes)
+    {
+        if (existing)
+            fileHandle = OpenFileMapping(FileRights.ReadWrite, false, name);
+        else
+            fileHandle = CreateFileMapping(NoFileHandle, 0, FileProtection.ReadWrite, 0, sizeInBytes, name);
+
+        if (fileHandle == IntPtr.Zero)
+            throw new Win32Exception();
+        fileMap = MapViewOfFile(fileHandle, FileRights.ReadWrite, 0, 0, 0);
+        if (fileMap == IntPtr.Zero)
+            throw new Win32Exception();
+    }
+    public void Dispose()
+    {
+        if (fileMap != IntPtr.Zero) UnmapViewOfFile(fileMap);
+        if (fileHandle != IntPtr.Zero) CloseHandle(fileHandle);
+        fileMap = fileHandle = IntPtr.Zero;
+    }
+}
+}
