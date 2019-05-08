@@ -1,0 +1,12 @@
+class Test{
+	public static int i=0;
+	[DllImport("dnsapi", EntryPoint = "DnsQueryEx", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
+	static extern int DnsQueryEx(IntPtr queryRequest, IntPtr queryResults, IntPtr cancelHandle);
+	delegate bool EnumWindowsCallback (IntPtr hWnd, IntPtr lParam);
+	
+	[DllImport("user32.dll")]
+	
+	static extern int EnumWindows (EnumWindowsCallback hWnd,IntPtr lParam);
+	static bool PrintWindow(IntPtr hWnd, IntPtr lParam){Console.WriteLine(hWnd.ToInt64());i++;return true;}
+	static void Main(){ EnumWindows(PrintWindow, IntPtr.Zero);}
+	}
